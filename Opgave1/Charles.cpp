@@ -142,7 +142,7 @@ void find_ball ()
 
 // here starts the part with code to be completed by the students
 
-// Name / student number / study student 1 :
+// Name / student number / study student 1 : Ciske Harsema / s1010048 / Informatica
 // Name / student number / study student 2 :
 
 /*
@@ -150,7 +150,7 @@ void find_ball ()
 */
 //{
 
-// give one or more comment lines about what will happen in this function
+// Clean all balls along the edges by moving forward and turning corners till Charles no longer stands on a ball
 void clean_string_with_balls ()
 {
     // Setup code
@@ -220,7 +220,7 @@ void move_back_to_start() {
     turn_right();
 }
 
-// give one or more comment lines about what will happen in this function
+// Clean all balls by scanning from east to west on each line, till the south wall is hit
 void clean_chaos_with_balls ()
 {
     // Setup code
@@ -304,7 +304,7 @@ void move_back_to_start_bonus() {
     turn_around();
 }
 
-// give one or more comment lines about what will happen in this function
+// Places balls around a block by first finding the north-west corner, then moving along the edges
 void around_the_block ()
 {
     // Setup code
