@@ -221,8 +221,8 @@ int initial_encryption_value ()
 void use_OTP (ifstream& infile, ofstream& outfile, Action action, int initial_value)
 {
     // pre-conditions:
-    assert(infile);
-    assert(outfile);
+    assert(infile.is_open());
+    assert(outfile.is_open());
     assert(initial_value > 0 && initial_value < 65536);
     // post-conditions:
     // outfile contains the processed content of infile, using the specified action and initial_value
@@ -279,7 +279,6 @@ int mandatory_driver() {
 /// \param initial_value - The secret key used to decrypt, must be in range (0, 65536).
 void decrypt(const string& line, ostream& out_stream, int initial_value) {
     // pre-conditions:
-    assert(out_stream);
     assert(initial_value > 0 && initial_value < 65536);
     // post-conditions:
     // out_stream contains the decrypted content of line, followed by a newline character
@@ -304,8 +303,6 @@ void decrypt(const string& line, ostream& out_stream, int initial_value) {
 /// \param initial_value - The secret key used to decrypt, must be in range (0, 65536).
 void decrypt_stream(istream& in_stream, ostream& out_stream, int initial_value) {
     // pre-conditions:
-    assert(in_stream);
-    assert(out_stream);
     assert(initial_value > 0 && initial_value < 65536);
     // post-conditions:
     // out_stream contains the decrypted content of in_stream
