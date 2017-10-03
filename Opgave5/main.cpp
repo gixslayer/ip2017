@@ -232,7 +232,9 @@ void use_OTP (ifstream& infile, ofstream& outfile, Action action, int initial_va
 
     while(infile.get(a)) {
         if(a == '\r')  {
-            // Massive hack, as apparently CR doesn't increment the key stream.
+            // The assignment is designed for Windows, which implicitly eats the CR characters, so eat them explicitly
+            // for *nix compatibility. Also write them to the output stream to produce identical results, which allows
+            // for easy comparison via file checksums.
             outfile << '\r';
         } else {
             int r = next_pseudo_random_number();
@@ -286,8 +288,9 @@ void decrypt(const string& line, ostream& out_stream, int initial_value) {
     initialise_pseudo_random(initial_value);
 
     for(char a : line) {
-        // No need for any hacks, as the character set is known and not problematic. Will break in the generic case
-        // however, so use with care.
+        // Ignore CR on *nix platforms.
+        if (a == '\r') continue;
+
         int r = next_pseudo_random_number();
         char b = rotate_char(a, r, Decrypt);
 
@@ -312,12 +315,10 @@ void decrypt_stream(istream& in_stream, ostream& out_stream, int initial_value) 
 
     while(in_stream.get(a)) {
         if(a == '\r')  {
-            // Massive hack, as apparently CR doesn't increment the key stream.
+            // The assignment is designed for Windows, which implicitly eats the CR characters, so eat them explicitly
+            // for *nix compatibility. Also write them to the output stream to produce identical results, which allows
+            // for easy comparison via file checksums.
             out_stream << '\r';
-        } else if(static_cast<unsigned char>(a) > 127) {
-            // Another massive hack, as there are a couple of what look like illegal characters (ASCII 195 & 168) in the
-            // provided secret.txt file. They do add to the key stream, but I'm not sure how they should be decrypted.
-            next_pseudo_random_number();
         } else {
             int r = next_pseudo_random_number();
             char b = rotate_char(a, r, Decrypt);
@@ -345,7 +346,6 @@ void brute_force_secret() {
     } else if(!out_file) {
         cerr << "Failed to open output file: " << strerror(errno) << endl;
     } else {
-        in_file.seekg(3); // Skip BOM
         getline(in_file, line);
 
         // Iterate over the key space and decrypt the first line using each possible key.
@@ -381,7 +381,6 @@ void decrypt_secret(int initial_value) {
     } else if(!out_file) {
         cerr << "Failed to open output file: " << strerror(errno) << endl;
     } else {
-        in_file.seekg(3); // Skip BOM
         in_file >> ss_in.rdbuf();
 
         decrypt_stream(ss_in, ss_out, initial_value);
@@ -419,9 +418,10 @@ void time_function(T func, const string& message, Args&&... args) {
 void bonus() {
     /*
      * The secret key was relatively easy to find. Just brute force the first line and do a little post processing to
-     * look for something that resembles English, then eyeball the correct answer, namely: R=28507 THE STORY OF BEOWULF
+     * look for something that resembles English, then eyeball the correct answer. EG: "cat brute_force.txt | grep -n THE"
+     * This produces 2748:THE STORY OF BEOWULF as an answer, giving the secret key 2748.
      */
-    const int SECRET_KEY = 28507;
+    const int SECRET_KEY = 2748;
 
     time_function(brute_force_secret, "Brute forced in: ");
     time_function(decrypt_secret, "Decrypted in: ", SECRET_KEY);
@@ -434,8 +434,8 @@ void bonus() {
 int main()
 {
     //test_rotate_char();
-    //bonus();
-    return mandatory_driver();
+    bonus();
+    //return mandatory_driver();
 
     return EXIT_SUCCESS;
 }
