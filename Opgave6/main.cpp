@@ -1,3 +1,8 @@
+// Suppress deprecation errors on strerror when building on MSVC
+#if defined(_MSC_VER)
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <iostream>
 #include <fstream>
 #include <cassert>
@@ -234,23 +239,54 @@ const string live_color("\x1B[32m");
 const string dead_color("\x1B[31m");
 const string reset_color("\x1B[0m");
 const string clear_console("\x1B[2J\x1B[3J\x1B[H");
+const string hide_cursor("\x1B[?25l");
+const string show_cursor("\x1B[?25h");
+const string reset_cursor("\x1B[H");
+
+void show_fancy_universe(Cell universe[ROWS][COLUMNS]);
+
+/// Updates the currently displayed universe so that the output matches the new universe.
+/// \param old_universe - The configuration of the universe currently displayed.
+/// \param new_universe - The new configuration to display.
+void update_displayed_universe(Cell old_universe[ROWS][COLUMNS], Cell new_universe[ROWS][COLUMNS]) {
+    // pre-conditions:
+    assert(old_universe != nullptr);
+    assert(new_universe != nullptr);
+    // post-conditions:
+    // The displayed universe configuration will be that of new_universe.
+
+    // A complete overwrite seems to be faster than selectively updating changed characters.
+    cout << reset_cursor;
+    show_fancy_universe(new_universe);
+}
 #else
 // Very ugly hacked code that *sort of* works for Windows. Yes it really needs error handling etc, but really CBA.
+#define NOMINMAX // This is to avoid a marco error on std::numeric_limits<T>::max()
 #include <Windows.h>
 
-static int last_color = -1;
-
 void set_console_color(ostream& stream, int color) {
-    if (color == last_color) return;
-
     CONSOLE_SCREEN_BUFFER_INFO csbi;
 
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     GetConsoleScreenBufferInfo(hConsole, &csbi);
-    last_color = color;
     WORD wAttributes = (csbi.wAttributes & 0x00f0) | (color & 0x0f);
 
     SetConsoleTextAttribute(hConsole, wAttributes);
+}
+
+void set_cursor_pos(SHORT x, SHORT y) {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleCursorPosition(hConsole, { x, y });
+}
+
+void set_cursor_visible(bool visible) {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    CONSOLE_CURSOR_INFO consoleCursorInfo;
+
+    consoleCursorInfo.dwSize = sizeof(CONSOLE_CURSOR_INFO);
+    consoleCursorInfo.bVisible = visible;
+
+    SetConsoleCursorInfo(hConsole, &consoleCursorInfo);
 }
 
 ostream& live_color(ostream& stream) {
@@ -285,6 +321,54 @@ ostream& clear_console(ostream& stream) {
     SetConsoleCursorPosition(hConsole, { 0, 0 });
 
     return stream;
+}
+
+ostream& reset_cursor(ostream& stream) {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleCursorPosition(hConsole, { 0, 0 });
+
+    return stream;
+}
+
+ostream& hide_cursor(ostream& stream) {
+    set_cursor_visible(false);
+
+    return stream;
+}
+
+ostream& show_cursor(ostream& stream) {
+    set_cursor_visible(true);
+
+    return stream;
+}
+
+/// Updates the currently displayed universe so that the output matches the new universe.
+/// \param old_universe - The configuration of the universe currently displayed.
+/// \param new_universe - The new configuration to display.
+void update_displayed_universe(Cell old_universe[ROWS][COLUMNS], Cell new_universe[ROWS][COLUMNS]) {
+    // pre-conditions:
+    assert(old_universe != nullptr);
+    assert(new_universe != nullptr);
+    // post-conditions:
+    // The displayed universe configuration will be that of new_universe.
+
+    // Selectively update changed cells.
+    for(int row = 0; row < ROWS; ++row) {
+        for (int column = 0; column < COLUMNS; ++column) {
+            Cell old_cell = old_universe[row][column];
+            Cell new_cell = new_universe[row][column];
+
+            if(new_cell != old_cell) {
+                set_cursor_pos(column, row);
+
+                if(new_cell == Dead) {
+                    cout << dead_color << DEAD;
+                } else {
+                    cout << live_color << LIVE;
+                }
+            }
+        }
+    }
 }
 #endif
 
@@ -471,17 +555,21 @@ void run_steps(Cell universe[ROWS][COLUMNS]) {
     int steps = get_int("Number of steps: ");
     int animation_delay = get_int("Animation delay (in ms): ");
 
-    for(int step = 0; step < steps; ++step) {
-        // next_universe is used to temporarily hold the next generation, until it is copied back into universe.
-        next_generation(universe, next_universe);
-        memcpy(universe, next_universe, ROWS*COLUMNS*sizeof(Cell));
+    cout << hide_cursor << clear_console;
+    show_fancy_universe(universe);
 
-        cout << clear_console;
-        show_fancy_universe(universe);
+    for(int step = 0; step < steps; ++step) {
+        next_generation(universe, next_universe);
+        update_displayed_universe(universe, next_universe);
+
+        // Copy the next_universe into the current universe to make it the 'active' universe.
+        memcpy(universe, next_universe, ROWS*COLUMNS*sizeof(Cell));
 
         chrono::milliseconds delay(animation_delay);
         this_thread::sleep_for(delay);
     }
+
+    cout << clear_console << reset_color << show_cursor;
 }
 
 /// Prompts the user to select and action, then returns the selected action.
