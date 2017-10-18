@@ -7,6 +7,8 @@
 #include <fstream>
 #include <cstring>
 #include <cassert>
+#include <string>
+#include <algorithm>
 
 using namespace std;
 
@@ -43,10 +45,11 @@ void split_on(const string& str, char delim, string& lhs, string& rhs) {
 
     size_t index = str.find(delim);
 
-    if(index == string::npos) {
+    if (index == string::npos) {
         lhs = str;
         rhs = "";
-    } else {
+    }
+    else {
         lhs = str.substr(0, index);
         rhs = index + 1 == str.length() ? "" : str.substr(index + 1);
     }
@@ -70,12 +73,12 @@ int split_into(const string& str, char delim, string dest[], int dest_size) {
     size_t pos = 0;
     size_t index;
 
-    while((index = str.find(delim, pos)) != string::npos) {
+    while ((index = str.find(delim, pos)) != string::npos) {
         string segment = str.substr(pos, index - pos);
 
-        if(!segment.empty()) {
+        if (!segment.empty()) {
             // Prevent array overflow.
-            if(size == dest_size) {
+            if (size == dest_size) {
                 return ERROR_OVERFLOW;
             }
 
@@ -85,11 +88,11 @@ int split_into(const string& str, char delim, string dest[], int dest_size) {
         pos = index + 1;
     }
 
-    if(pos < str.length()) {
+    if (pos < str.length()) {
         string final_segment = str.substr(pos);
 
         // Prevent array overflow.
-        if(size == dest_size) {
+        if (size == dest_size) {
             return ERROR_OVERFLOW;
         }
 
@@ -116,16 +119,16 @@ bool parse_command(const string &input, Command &command, string &args) {
 
     split_on(input, ' ', command_text, args);
 
-    for(int i = 0; i < NumCommands && !valid; ++i) {
-        if(command_text == COMMAND_TEXT[i]) {
+    for (int i = 0; i < NumCommands && !valid; ++i) {
+        if (command_text == COMMAND_TEXT[i]) {
             command = static_cast<Command >(i);
             valid = true;
         }
     }
 
-    if(!valid) {
+    if (!valid) {
         cerr << "Unknown command: " << command_text << endl;
-     }
+    }
 
     return valid;
 }
@@ -137,9 +140,9 @@ void show_commands() {
     // post-conditions:
     // All commands are printed to the standard output.
 
-    cout << "Commands:";
+    cout << "\nCommands:";
 
-    for(int i = 0; i < NumCommands; ++i) {
+    for (int i = 0; i < NumCommands; ++i) {
         cout << ' ' << COMMAND_TEXT[i];
     }
 
@@ -161,6 +164,8 @@ void get_command(Command &command, string &args) {
         cout << ">";
         getline(cin, input);
     } while (!parse_command(input, command, args));
+
+    cout << endl;
 }
 
 /// Attempts to read a word from the stream.
@@ -191,17 +196,18 @@ void cmd_enter(const string& args) {
     ifstream stream(args);
     string word;
 
-    if(!stream) {
+    if (!stream) {
         cout << "Could not open input file: " << strerror(errno) << endl;
-    } else {
+    }
+    else {
         content_size = 0;
 
 #ifdef BONUS
-        while(read_word_bonus(stream, word)) {
+        while (read_word_bonus(stream, word)) {
 #else
-        while(read_word(stream, word)) {
+            while (read_word(stream, word)) {
 #endif
-            if(content_size == MAX_WORDS) {
+            if (content_size == MAX_WORDS) {
                 cerr << "Failed to read file: word count cannot exceed " << MAX_WORDS << endl;
                 content_size = 0;
                 return;
@@ -223,7 +229,7 @@ void cmd_content() {
 
     cout << "Currently storing " << content_size << " words:";
 
-    for(int i = 0; i < content_size; ++i) {
+    for (int i = 0; i < content_size; ++i) {
         cout << ' ' << content[i];
     }
 
@@ -245,9 +251,10 @@ bool parse_word_sequence(const string& args) {
 
     word_sequence_size = split_into(args, ' ', word_sequence, MAX_WORDS_SEQUENCE);
 
-    if(word_sequence_size == ERROR_OVERFLOW) {
+    if (word_sequence_size == ERROR_OVERFLOW) {
         cerr << "Failed to parse word sequence: length cannot exceed " << MAX_WORDS_SEQUENCE << " words" << endl;
-    } else if(word_sequence_size == 0) {
+    }
+    else if (word_sequence_size == 0) {
         cerr << "Please enter a word sequence (space separated)" << endl;
     }
 
@@ -265,8 +272,8 @@ bool has_word_sequence_at(int index, int start = 0) {
     // post-conditions:
     // return value is true if the sequences match, false otherwise.
 
-    for(int i = start; i < word_sequence_size; ++i) {
-        if(word_sequence[i] != content[index + i - start]) {
+    for (int i = start; i < word_sequence_size; ++i) {
+        if (word_sequence[i] != content[index + i - start]) {
             return false;
         }
     }
@@ -282,9 +289,10 @@ void cmd_count(const string& args) {
     // post-conditions:
     // The number of occurrences of the word sequence are displayed.
 
-    if(content_size == 0) {
+    if (content_size == 0) {
         cerr << "Please load a file first via " << COMMAND_TEXT[Enter] << endl;
-    } else if(parse_word_sequence(args)) {
+    }
+    else if (parse_word_sequence(args)) {
         int count = 0;
 
         for (int i = 0; i < content_size - word_sequence_size + 1; ++i) {
@@ -306,9 +314,10 @@ void cmd_where(const string& args) {
     // post-conditions:
     // The number of occurrences and the indexes of the word sequence are displayed.
 
-    if(content_size == 0) {
+    if (content_size == 0) {
         cerr << "Please load a file first via " << COMMAND_TEXT[Enter] << endl;
-    } else if(parse_word_sequence(args)) {
+    }
+    else if (parse_word_sequence(args)) {
         int count = 0;
 
         for (int i = 0; i < content_size - word_sequence_size + 1; ++i) {
@@ -340,7 +349,8 @@ bool parse_int(const string& str, int& result, int min_value = 0) {
 
     try {
         result = stoi(str, &index);
-    } catch (...) {
+    }
+    catch (...) {
         return false;
     }
 
@@ -364,11 +374,11 @@ void display_context(int index, int m) {
 
     cout << "Found at index " << index + 1 << ':';
 
-    for(int i = start; i < end; ++i) {
+    for (int i = start; i < end; ++i) {
         cout << ' ';
-        if(i == index) cout << '|';
+        if (i == index) cout << '|';
         cout << content[i];
-        if(i == index + word_sequence_size - 2) cout << '|';
+        if (i == index + word_sequence_size - 2) cout << '|';
     }
 
     cout << endl;
@@ -382,16 +392,19 @@ void cmd_context(const string& args) {
     // post-conditions:
     // The number of occurrences and the context of each matching word sequence is displayed.
 
-    if(content_size == 0) {
+    if (content_size == 0) {
         cerr << "Please load a file first via " << COMMAND_TEXT[Enter] << endl;
-    } else if(parse_word_sequence(args)) {
+    }
+    else if (parse_word_sequence(args)) {
         int m;
 
-        if(word_sequence_size < 2) {
+        if (word_sequence_size < 2) {
             cerr << "Word sequence must be at least 1 word in length" << endl;
-        } else if(!parse_int(word_sequence[0], m)) {
+        }
+        else if (!parse_int(word_sequence[0], m)) {
             cerr << word_sequence[0] << " is not a valid non negative integer" << endl;
-        } else {
+        }
+        else {
             int count = 0;
 
             for (int i = 0; i < content_size - word_sequence_size + 1; ++i) {
@@ -459,7 +472,7 @@ bool is_letter_character(char c) {
     // post-conditions
     // return value is true if c is a letter character, false otherwise.
 
-    return isalpha(c) || c == '\'';
+    return isalpha(static_cast<unsigned char>(c)) || c == '\'';
 }
 
 /// Finds the start of a word for a given string.
@@ -473,8 +486,8 @@ size_t find_start(const string& input) {
 
     size_t index = 0;
 
-    for(char c : input) {
-        if(is_letter_character(c)) {
+    for (char c : input) {
+        if (is_letter_character(c)) {
             return index;
         }
 
@@ -492,7 +505,7 @@ size_t find_start(const string& input) {
 /// \return The index of the first element not part of the word.
 size_t find_end(const string& input, size_t start, bool& parse_remainder) {
     // pre-conditions:
-    assert(start < input.length());
+    assert(true);
     // post-conditions:
     // return value is the index of the first element not part of the word. parse_remainder is true of the remainder of
     // the input string potentially contains another word and should be parsed again.
@@ -500,21 +513,23 @@ size_t find_end(const string& input, size_t start, bool& parse_remainder) {
     int hyphen_count = 0;
     parse_remainder = false;
 
-    for(size_t index = start; index < input.length(); ++index) {
+    for (size_t index = start; index < input.length(); ++index) {
         char c = input[index];
 
-        if(c == '-') {
+        if (c == '-') {
             ++hyphen_count;
 
             // x-- pattern.
-            if(hyphen_count == 2) {
+            if (hyphen_count == 2) {
                 parse_remainder = true;
 
                 return index - hyphen_count + 1;
             }
-        } else if(is_letter_character(c)) {
+        }
+        else if (is_letter_character(c)) {
             hyphen_count = 0;
-        } else {
+        }
+        else {
             // Only return x in case of a single dangling hyphen (x- pattern).
             return index - hyphen_count;
         }
@@ -538,7 +553,7 @@ bool read_word_bonus(ifstream& stream, string& word) {
     bool has_read_word = false;
     string input;
 
-    while(!has_read_word && stream >> input) {
+    while (!has_read_word && stream >> input) {
         bool parse_remainder = false;
         size_t start = find_start(input);
         size_t end = find_end(input, start, parse_remainder);
@@ -548,9 +563,9 @@ bool read_word_bonus(ifstream& stream, string& word) {
             has_read_word = true;
 
             // In case a word was partially read, set the stream position to the start of the remaining characters.
-            if(parse_remainder) {
+            if (parse_remainder) {
                 stream.clear();
-                stream.seekg(end - input.length(), ifstream::cur);
+                stream.seekg(static_cast<ifstream::off_type>(end) - input.length(), ifstream::cur);
             }
         }
     }
@@ -569,7 +584,7 @@ int main() {
     do {
         show_commands();
         get_command(command, args);
-    } while(process_command(command, args));
+    } while (process_command(command, args));
 
     return EXIT_SUCCESS;
 }
