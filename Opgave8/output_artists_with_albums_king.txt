@@ -1,0 +1,6 @@
+> artist? king
+groep: King Crimson album: In the court of the crimson king
+groep: Peter Gabriel album: Shaking the tree (Sixteen golden hits)
+groep: Radiohead album: The king of limbs
+groep: Roger Waters album: The pros and cons of hitch hiking
+Aantal gevonden artiesten: 4
