@@ -1,25 +1,18 @@
-#define USE_VECTOR_SORTING
-#define TRACK_LENGTH_COMPARISON
-#define PROFILE
-#define VISUAL_PROFILE
+#define TRACK_LENGTH_COMPARISON // Enable to compare tracks by running time.
+#define PROFILE // Enable to profile Track operator invocations.
+#define VISUAL_PROFILE // Enable to visually profile Track operator invocations.
 
 #ifdef VISUAL_PROFILE
 #ifndef PROFILE
-#define PROFILE
-#endif
-#ifndef USE_VECTOR_SORTING
-#define USE_VECTOR_SORTING
+#define PROFILE // Visual profiling requires normal profiling enabled.
 #endif
 #endif
 
 #ifdef PROFILE
-#define NDEBUG
-static int num_operations;
-#endif
-
-// Suppress deprecation errors on strerror when building on MSVC
-#if defined(_MSC_VER)
-#define _SCL_SECURE_NO_WARNINGS
+#define NDEBUG // Disable asserts while profiling.
+// Thread local is important here, as the code is multi-threaded and each algorithm runs in its own thread, and thus
+// requires this counter to be thread local.
+static thread_local int num_operations;
 #endif
 
 /*********************************************************************
@@ -35,10 +28,11 @@ static int num_operations;
 **********************************************************************/
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <cstdlib>
 #include <vector>
 #include <cassert>
+#include <sstream>
+#include <functional>
+#include <thread>
 
 using namespace std;
 
@@ -63,9 +57,6 @@ struct Track
     Length time;							// lengte van track
     string country;                         // land van artiest
 };
-
-const int MAX_AANTAL_LIEDJES = 6000;        // LET OP: alleen noodzakelijk voor *array*
-Track liedjes[MAX_AANTAL_LIEDJES];         // LET OP: dit moet een vector<Track> worden
 
 // region Length Operators
 
@@ -210,20 +201,21 @@ ostream& operator<< (ostream& out, const Track track)
     return out;
 }
 
-// LET OP: deze versie maakt gebruik van *array* implementatie MuziekDB
-int lees_liedjes(ifstream& infile, Track liedjes[MAX_AANTAL_LIEDJES])
+int lees_liedjes(ifstream& infile, vector<Track>& tracks)
 {
     int aantal_ingelezen_liedjes = 0;
     do {
         Track volgende;
         infile >> volgende;
-        if (infile)
-            liedjes[aantal_ingelezen_liedjes++] = volgende;
-    } while (infile && aantal_ingelezen_liedjes < MAX_AANTAL_LIEDJES);
+        if (infile) {
+            tracks.push_back(volgende);
+            ++aantal_ingelezen_liedjes;
+        }
+    } while (infile);
     return aantal_ingelezen_liedjes;
 }
 
-int lees_bestand(string bestandnaam)
+int lees_bestand(string bestandnaam, vector<Track>& tracks)
 {
     ifstream nummersDBS(bestandnaam.c_str());
     if (!nummersDBS)
@@ -232,15 +224,21 @@ int lees_bestand(string bestandnaam)
         return -1;
     }
     cout << "Lees '" << bestandnaam << "' in." << endl;
-    int aantal = lees_liedjes(nummersDBS, liedjes);
+    int aantal = lees_liedjes(nummersDBS, tracks);
     nummersDBS.close();
     return aantal;
 }
 
-void toon_MuziekDB(Track liedjes[MAX_AANTAL_LIEDJES], int aantalLiedjes)
+void toon_MuziekDB(const vector<Track>& tracks)
 {
-    for (int i = 0; i < aantalLiedjes; i++)
-        cout << i + 1 << ". " << liedjes[i] << endl;
+    int i = 0;
+    stringstream ss;
+
+    for (const auto& track : tracks) {
+        ss << ++i << ". " << track << '\n';
+    }
+
+    cout << ss.rdbuf() << flush;
 }
 
 /************************************************************************
@@ -264,131 +262,6 @@ bool valid_slice(Slice s)
 {
     return 0 <= s.from && s.from <= s.to;
 }
-
-//region Array Sorting
-
-/************************************************************************
-*   functies en datastructuren uit hoorcollege #9 IPC031:
-************************************************************************/
-typedef Track El;                // LET OP: voor de opdracht zullen Track-waardes gesorteerd gaan worden
-
-bool is_sorted(El array[], Slice s)
-{
-    //	pre-condition:
-    assert(valid_slice(s));	// ...and s.to < size of array
-    //	post-condition:
-    //	result is true if	array[s.from]   <= array[s.from+1]
-    //						array[s.from+1] <= array[s.from+2]
-    //						...
-    //						array[s.to-1]   <= array[s.to]
-    bool sorted = true;
-    for (int i = s.from; i < s.to && sorted; i++)
-        if (array[i] > array[i + 1])
-            sorted = false;
-    return sorted;
-}
-
-int find_position(El array[], Slice s, El y)
-{
-    //	pre-condition:
-    assert(valid_slice(s) && is_sorted(array, s));    // ...and s.to < size of array
-    //	post-condition: s.from <= result <= s.to+1
-    for (int i = s.from; i <= s.to; i++)
-        if (y <= array[i])
-            return i;
-    return s.to + 1;
-}
-
-void shift_right(El array[], Slice s)
-{
-    //	pre-condition:
-    assert(valid_slice(s));	// ... and s.to < size (array) - 1
-    //	post-condition:  array[s.from+1]	= 	old array[s.from]
-    //			    	 array[s.from+2]	= 	old array[s.from+1]
-    //						...
-    //			    	 array[s.to+1]		= 	old array[s.to]
-    for (int i = s.to + 1; i > s.from; i--)
-        array[i] = array[i - 1];
-}
-
-void insert(El array[], int& length, El y)
-{
-    const int pos = find_position(array, mkSlice(0, length - 1), y);
-    if (pos < length)
-        shift_right(array, mkSlice(pos, length - 1));
-    array[pos] = y;
-    length++;
-}
-
-void swap(El array[], int  i, int  j)
-{
-    //	pre-condition:
-    assert(i >= 0 && j >= 0);	// ... and i < size of array
-    // ... and j < size of array
-    // Post-condition: array[i] = old array[j] and array[j] = old array[i]
-    const El help = array[i];
-    array[i] = array[j];
-    array[j] = help;
-}
-
-//	array-based insertion sort:
-void insertion_sort(El array[], int length)
-{
-    int sorted = 1;
-    while (sorted < length)
-    {
-        insert(array, sorted, array[sorted]);
-    }
-}
-
-//	array-based selection sort:
-int smallest_value_at(El array[], Slice s)
-{
-    //	pre-condition:
-    assert(valid_slice(s));	// ... and s.to < size (s)
-    //	Post-condition: s.from <= result <= s.to and array[result] is
-    //	the minimum value of array[s.from] .. array[s.to]
-    int  smallest_at = s.from;
-    for (int index = s.from + 1; index <= s.to; index++)
-        if (array[index] < array[smallest_at])
-            smallest_at = index;
-    return smallest_at;
-}
-
-void selection_sort(El array[], int length)
-{
-    for (int unsorted = 0; unsorted < length; unsorted++)
-    {
-        const int k = smallest_value_at(array, mkSlice(unsorted, length - 1));
-        swap(array, unsorted, k);
-    }
-}
-
-//	array-based bubble sort:
-bool bubble(El array[], Slice s)
-{
-    //	pre-condition:
-    assert(valid_slice(s));	// ... and s.to < size(array)
-    //	Post-condition:
-    //	maximum of array[s.from]..array[s.to] is at array[s.to]
-    //	if result is true then sorted( array, s )
-    bool is_sorted = true;
-    for (int i = s.from; i < s.to; i++)
-        if (array[i] > array[i + 1])
-        {
-            swap(array, i, i + 1);
-            is_sorted = false;
-        }
-    return is_sorted;
-}
-
-void bubble_sort(El array[], int length)
-{
-    while (!bubble(array, mkSlice(0, length - 1)))
-        length--;
-}
-
-// endregion
 
 // region Vector Sorting
 
@@ -467,7 +340,7 @@ void swap(vector<Track>& vector, int  i, int  j)
     assert(i >= 0 && j >= 0);	// ... and i < size of vector
     // ... and j < size of vector
     // Post-condition: vector[i] = old vector[j] and vector[j] = old vector[i]
-    const El help = vector[i];
+    const Track help = vector[i];
     vector[i] = vector[j];
     vector[j] = help;
 }
@@ -543,14 +416,58 @@ void bubble_sort(vector<Track>& vector)
 
 // endregion
 
+// region Visualization
+
 #ifdef PROFILE
+const size_t INITIAL_LENGTH = 99;
+const size_t INCREMENTS = 100;
+const char FULL_MEASURE = '*';
+const char REMAINDER_MEASURE = '.';
+const int MEASURE = 100000;
+
 void write_n(ofstream& os, const char c, int n) {
+    // pre:
+    assert(n >= 0);
+    // post:
+    // the character n has been written to the file os n times.
+
     for (int i = 0; i < n; ++i) {
         os << c;
     }
 }
 
+void visualize_slice(vector<Track>& tracks, ofstream& os, const function<void(vector<Track>&)>& algorithm) {
+    // pre:
+    assert(true);
+    // post:
+    // The slice tracks has been visually profiled for the specified algorithm, and the results written to os.
+
+    num_operations = 0;
+    algorithm(tracks);
+    write_n(os, FULL_MEASURE, num_operations / MEASURE);
+    if (num_operations % MEASURE != 0) os << REMAINDER_MEASURE;
+    os << '\n';
+}
+
+void visualize_algorithm(const vector<Track>& tracks, ofstream& os, const function<void(vector<Track>&)>& algorithm) {
+    // pre:
+    assert(true);
+    // post:
+    // The algorithm has been visually profiled, and the results written to os.
+
+    for (size_t length = INITIAL_LENGTH; length <= tracks.size(); length += INCREMENTS) {
+        vector<Track> slice(tracks.cbegin(), tracks.cbegin() + length);
+
+        visualize_slice(slice, os, algorithm);
+    }
+}
+
 void visualize(const vector<Track>& tracks) {
+    // pre:
+    assert(true);
+    // post:
+    // All sorting algorithms have been visually profiled, and the results written to the respective output files.
+
 #ifdef TRACK_LENGTH_COMPARISON
     ofstream os_insert("../visualization-insertion-track-length.txt");
     ofstream os_select("../visualization-selection-track-length.txt");
@@ -563,46 +480,26 @@ void visualize(const vector<Track>& tracks) {
     ofstream os_bonus("../visualization-bonus.txt");
 #endif
 
-    size_t length = 99;
-    const size_t INCREMENTS = 100;
-    const char FULL_MEASURE = '*';
-    const char REMAINDER_MEASURE = '.';
-    const int MEASURE = 100000;
+    cout << "Visualizing sorting algorithms" << endl;
+    cout << "Spawning threads..." << endl;
 
-    while (length <= tracks.size()) {
-        vector<Track> insert_vec(tracks.cbegin(), tracks.cbegin() + length);
-        vector<Track> select_vec(insert_vec);
-        vector<Track> bubble_vec(insert_vec);
-        vector<Track> bonus_vec(insert_vec);
+    thread thr_insert(visualize_algorithm, tracks, ref(os_insert), insertion_sort);
+    thread thr_select(visualize_algorithm, tracks, ref(os_select), selection_sort);
+    thread thr_bubble(visualize_algorithm, tracks, ref(os_bubble), bubble_sort);
+    thread thr_bonus(visualize_algorithm, tracks, ref(os_bonus), insertion_sort_bonus);
 
-        num_operations = 0;
-        insertion_sort(insert_vec);
-        write_n(os_insert, FULL_MEASURE, num_operations / MEASURE);
-        if (num_operations % MEASURE != 0) os_insert << REMAINDER_MEASURE;
-        os_insert << '\n';
+    cout << "Waiting for threads to finish..." << endl;
 
-        num_operations = 0;
-        selection_sort(select_vec);
-        write_n(os_select, FULL_MEASURE, num_operations / MEASURE);
-        if (num_operations % MEASURE != 0) os_select << REMAINDER_MEASURE;
-        os_select << '\n';
+    thr_insert.join();
+    thr_select.join();
+    thr_bubble.join();
+    thr_bonus.join();
 
-        num_operations = 0;
-        bubble_sort(bubble_vec);
-        write_n(os_bubble, FULL_MEASURE, num_operations / MEASURE);
-        if (num_operations % MEASURE != 0) os_bubble << REMAINDER_MEASURE;
-        os_bubble << '\n';
-
-        num_operations = 0;
-        insertion_sort_bonus(bonus_vec);
-        write_n(os_bonus, FULL_MEASURE, num_operations / MEASURE);
-        if (num_operations % MEASURE != 0) os_bonus << REMAINDER_MEASURE;
-        os_bonus << '\n';
-
-        length += INCREMENTS;
-    }
+    cout << "Completed" << endl;
 }
 #endif
+
+// endregion
 
 /************************************************************************
 *   de hoofdstructuur van het programma:
@@ -626,16 +523,13 @@ Sorteermethode selecteer()
 
 int main()
 {
-    int aantalLiedjes = lees_bestand("../Nummers.txt");
+    vector<Track> tracks;
+    int aantalLiedjes = lees_bestand("../Nummers.txt", tracks);
     if (aantalLiedjes < 0)
     {
         cout << "Bestand inlezen mislukt. Programma termineert." << endl;
         return aantalLiedjes;
     }
-
-#ifdef USE_VECTOR_SORTING
-    vector<Track> tracks(&liedjes[0], &liedjes[aantalLiedjes]);
-#endif
 
 #ifdef VISUAL_PROFILE
     visualize(tracks);
@@ -647,31 +541,22 @@ int main()
     cout << "Sorteren bestand met " << sorteermethode[m] << " sort" << endl;
     switch (m)
     {
-#ifdef USE_VECTOR_SORTING
     case Insertion: insertion_sort(tracks); break;
     case Selection: selection_sort(tracks); break;
     case Bubble:    bubble_sort(tracks); break;
     case InsertionBonus: insertion_sort_bonus(tracks); break;
-#else
-    case Insertion: insertion_sort(liedjes, aantalLiedjes); break;
-    case Selection: selection_sort(liedjes, aantalLiedjes); break;
-    case Bubble:    bubble_sort(liedjes, aantalLiedjes); break;
-#endif
     default:        cout << "Huh?" << endl;
     }
 
 #ifdef PROFILE
     cout << num_operations << endl;
 #else
-#ifdef USE_VECTOR_SORTING
-    copy(tracks.cbegin(), tracks.cend(), &liedjes[0]);
-#endif
     cout << "Bestand gesorteerd." << endl;
-    toon_MuziekDB(liedjes, aantalLiedjes);
+    toon_MuziekDB(tracks);
 #endif
 #endif
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 /*
