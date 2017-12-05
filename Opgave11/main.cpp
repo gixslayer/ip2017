@@ -227,6 +227,29 @@ bool is_simplified(const string& pattern, size_t i) {
     */
 }
 
+bool match_pattern(const string&, size_t, const string&, size_t);
+
+/// Check if \a pattern, starting at \a i, matches \a source, starting from any k, such that j &lt= k &lt \a source.size().
+/// \param pattern - The simplified pattern to match.
+/// \param i - The pattern index to begin checking from.
+/// \param source - The source string to match against.
+/// \param j - The lower bound of the source index k to begin checking from.
+/// \return True if the pattern matches at any position, false otherwise.
+bool match_pattern_anywhere(const string& pattern, size_t i, const string& source, size_t j) {
+    // pre:
+    assert(i < pattern.size());
+    assert(is_simplified(pattern, i));
+    // post:
+    // return value is true if pattern[i:] matches source[k:], for any k such that j <= k < |source|.
+
+    // Next character in pattern must be an exact character match, so consume source till that character occurs.
+    size_t new_j = source.find(pattern[i], j);
+
+    if(new_j == string::npos) return false; // If the character cannot be found, the pattern cannot possibly match.
+    if(match_pattern(pattern, i, source, new_j)) return true;
+    else return match_pattern_anywhere(pattern, i, source, ++new_j);
+}
+
 /// Check if \a pattern, starting at \a i, matches \a source, starting at \a j.
 /// \param pattern - The simplified pattern to match.
 /// \param i - The pattern index to begin checking from.
@@ -242,15 +265,10 @@ bool match_pattern(const string& pattern, size_t i, const string& source, size_t
     if(i == pattern.size() && j == source.size()) return true; // Pattern and source depleted.
     if(i >= pattern.size() || j >= source.size()) return false; // Pattern or source depleted, but not both.
     if(pattern[i] == '.') return match_pattern(pattern, ++i, source, ++j); // Single character wildcard.
-    if(pattern[i] == '*') { // Multi character wildcard.
-        if(i + 1 == pattern.size()) return true; // Pattern ends with *
-
-        // Next character in pattern must be an exact character match, so consume source till that character occurs.
-        size_t new_j = source.find(pattern[i+1], j);
-
-        // If the next exact character match cannot be found, the pattern cannot possibly match.
-        return new_j == string::npos ? false : match_pattern(pattern, ++i, source, new_j);
-    } else return pattern[i] == source[j] && match_pattern(pattern, ++i, source, ++j); // Exact character match.
+    // Multi character wildcard. If pattern ends with * then always match, else try to find a match by consuming any
+    // number of characters from source.
+    if(pattern[i] == '*') return i + 1 == pattern.size() ? true : match_pattern_anywhere(pattern, ++i, source, j);
+    else return pattern[i] == source[j] && match_pattern(pattern, ++i, source, ++j); // Exact character match.
 }
 
 /// Check if \a pattern matches \a source.
@@ -323,6 +341,10 @@ int main() {
     cout << "Cu*e matches A Cure? " << match_pattern("Cu*e", "A Cure") << endl;
     cout << "Cu*e matches A Curve? " << match_pattern("Cu*e", "A Curve") << endl;
     cout << "*ea* matches Dream Theater? " << match_pattern("*ea*", "Dream Theater") << endl;
+    cout << "a*ba matches abbaba? " << match_pattern("a*ba", "abbaba") << endl;
+    cout << "a*ba*ba matches abbababbba? " << match_pattern("a*ba*ba", "abbababbba") << endl;
+    cout << "a*ba*a*a*ba matches abbababbba? " << match_pattern("a*ba*a*a*ba", "abbababbba") << endl;
+    cout << "a*ba*a*a*ba matches abbababbaba? " << match_pattern("a*ba*a*a*ba", "abbababbaba") << endl;
 
     return EXIT_SUCCESS;
 }
