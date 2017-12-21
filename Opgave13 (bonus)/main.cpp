@@ -1,3 +1,5 @@
+//#define PROFILE_ONLY
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -7,6 +9,8 @@
 #include <map>
 #include <cassert>
 #include <cstring>
+#include <unordered_set>
+#include <chrono>
 
 using namespace std;
 
@@ -15,8 +19,11 @@ using namespace std;
 constexpr int PUZZLE_WIDTH = 4;
 constexpr int PUZZLE_HEIGHT = 5;
 constexpr int PUZZLE_SIZE = PUZZLE_WIDTH * PUZZLE_HEIGHT;
-constexpr int EMPTY_TILES = 2;
 constexpr int SOLUTION_TILES[] = { 13, 14, 17, 18 };
+
+// std::hash<T> requires a size_t return type, but as the hashing function needs 60 bits to guarantee perfect hashing
+// this only works on x64 builds.
+static_assert(sizeof(size_t) >= sizeof(uint64_t), "Please compile as x64");
 
 enum class Cell {
     black, red, green, yellow, empty
@@ -26,7 +33,8 @@ enum class Direction {
     north, east, south, west
 };
 
-Direction SEARCH_DIRECTIONS[] = { Direction::north, Direction::south, Direction::east, Direction::west };
+// Order might seem somewhat random here, but it will produce an identical solution to the given example.
+Direction SEARCH_DIRECTIONS[] = { Direction::north, Direction::south, Direction::west, Direction::east };
 
 struct Pos {
     unsigned int c;
@@ -40,7 +48,7 @@ struct Move {
 
 class Puzzle {
 public:
-    Puzzle() : m_cells{}, m_empty{}, m_hash_valid{}, m_hashcode{} {}
+    Puzzle() : m_cells{}, m_hash_valid{}, m_hashcode{} {}
     explicit Puzzle(const vector<Cell>& cells);
 
     Cell operator[](uint32_t cell) const { return m_cells[cell]; }
@@ -59,7 +67,6 @@ public:
 
 private:
     Cell m_cells[PUZZLE_SIZE];
-    Pos m_empty[EMPTY_TILES];
     mutable bool m_hash_valid;
     mutable uint64_t m_hashcode;
 };
@@ -75,7 +82,25 @@ struct Candidate {
     int parent;
 };
 
+// Inject specialization of std::hash<T>, so that it is used for standard containers (unordered_set in this case).
+namespace std {
+    template<>
+    struct hash<Puzzle> {
+        typedef Puzzle argument_type;
+        typedef size_t result_type;
+
+        result_type operator()(const argument_type& puzzle) const noexcept {
+            return puzzle.hashcode();
+        }
+    };
+}
+
+using CandidateChecker = unordered_set<Puzzle>;
+
 bool pos_can_move(const Pos& pos, Direction dir, size_t width, size_t height) {
+    assert(true);
+    // post: return value is true iff pos can move in dir and stay within bounds 0, 0, width, height.
+
     switch (dir) {
         case Direction::north:  return pos.r > 0;
         case Direction::east:   return pos.c + 1 < width;
@@ -85,6 +110,10 @@ bool pos_can_move(const Pos& pos, Direction dir, size_t width, size_t height) {
 }
 
 Pos pos_move(const Pos& pos, Direction dir) {
+    assert(!(pos.c == 0 && dir == Direction::west));
+    assert(!(pos.r == 0 && dir == Direction::north));
+    // post: return value is pos moved in dir.
+
     switch (dir) {
         case Direction::north:  return { pos.c, pos.r - 1 };
         case Direction::east:   return { pos.c + 1, pos.r };
@@ -94,19 +123,24 @@ Pos pos_move(const Pos& pos, Direction dir) {
 }
 
 Cell parse_cell(char c) {
+    assert(c == 'b' || c == '.' || c =='g' || c == 'r' || c == 'y');
+    // post: return value is a Cell of the correct type.
+
     switch (c) {
         case 'b': return Cell::black;
         case '.': return Cell::empty;
         case 'g': return Cell::green;
         case 'r': return Cell::red;
         case 'y': return Cell::yellow;
-        default: throw invalid_argument{ "c" };
     }
 }
 
 // region Stream I/O
 
-ostream& operator<<(ostream& os, const Cell& cell) {
+ostream& operator<<(ostream& os, Cell cell) {
+    assert(true);
+    // post: cell is printed to os.
+
     switch (cell) {
         case Cell::empty:   return os << '.';
         case Cell::black:   return os << 'b';
@@ -117,6 +151,9 @@ ostream& operator<<(ostream& os, const Cell& cell) {
 }
 
 ostream& operator<<(ostream& os, const Puzzle& puzzle) {
+    assert(true);
+    // post: puzzle is printed to os.
+
     for (auto i = 0; i < PUZZLE_SIZE; ++i) {
         os << puzzle[i];
 
@@ -127,6 +164,9 @@ ostream& operator<<(ostream& os, const Puzzle& puzzle) {
 }
 
 ostream& operator<<(ostream& os, const Solution& solution) {
+    assert(true);
+    // post: each node in the solution path is printed to os.
+
     for (const auto& node : solution.path) {
         os << node << endl;
     }
@@ -135,18 +175,19 @@ ostream& operator<<(ostream& os, const Solution& solution) {
 }
 
 istream& operator>>(istream& is, Puzzle& puzzle) {
+    assert(true);
+    // post: puzzle contains the puzzle loaded from is.
+
     string line;
     vector<Cell> cells;
 
     while (std::getline(is, line)) {
-        assert(line.size() >= PUZZLE_WIDTH);
+        assert(line.size() == PUZZLE_WIDTH);
 
-        auto first = line.cbegin();
-        auto last = first + PUZZLE_WIDTH;
-        auto result = back_inserter(cells);
-
-        transform(first, last, result, parse_cell);
+        transform(line.cbegin(), line.cend(), back_inserter(cells), parse_cell);
     }
+
+    assert(cells.size() == PUZZLE_SIZE);
 
     puzzle = Puzzle{ cells };
 
@@ -159,20 +200,15 @@ istream& operator>>(istream& is, Puzzle& puzzle) {
 
 Puzzle::Puzzle(const vector<Cell>& cells) : m_hashcode{}, m_hash_valid{} {
     assert(cells.size() == PUZZLE_SIZE);
+    // post: Puzzle constructed from the given cells.
 
     memcpy(m_cells, cells.data(), PUZZLE_SIZE * sizeof(Cell));
-    auto empty_count = 0u;
-
-    for (auto i = 0u; i < PUZZLE_SIZE && empty_count < EMPTY_TILES; ++i) {
-        if (m_cells[i] == Cell::empty) {
-            m_empty[empty_count++] = { i % PUZZLE_WIDTH, i / PUZZLE_WIDTH };
-        }
-    }
-
-    assert(empty_count == EMPTY_TILES);
 }
 
 bool Puzzle::operator==(const Puzzle& other) const {
+    assert(true);
+    // post: return value is true iff this puzzle is identical to other.
+
     if (hashcode() != other.hashcode()) return false;
 
     for (auto i = 0; i < PUZZLE_SIZE; ++i) {
@@ -183,19 +219,35 @@ bool Puzzle::operator==(const Puzzle& other) const {
 }
 
 void Puzzle::swap(uint32_t c1, uint32_t r1, uint32_t c2, uint32_t r2) {
-    Cell cell1 = m_cells[c1 + r1 * PUZZLE_WIDTH];
-    Cell cell2 = m_cells[c2 + r2 * PUZZLE_WIDTH];
+    assert(c1 < PUZZLE_WIDTH && c2 < PUZZLE_WIDTH);
+    assert(r1 < PUZZLE_HEIGHT && r2 < PUZZLE_HEIGHT);
+    // post: cells at position (c1,r1) and (c2,r2) are swapped.
 
-    m_cells[c1 + r1 * PUZZLE_WIDTH] = cell2;
-    m_cells[c2 + r2 * PUZZLE_WIDTH] = cell1;
+    auto pos1 = c1 + r1 * PUZZLE_WIDTH;
+    auto pos2 = c2 + r2 * PUZZLE_WIDTH;
+
+    /*Cell cell1 = m_cells[pos1];
+    Cell cell2 = m_cells[pos2];
+
+    m_cells[pos1] = cell2;
+    m_cells[pos2] = cell1;*/
+
+    ::swap(m_cells[pos1], m_cells[pos2]);
+
     m_hash_valid = false;
 }
 
 Cell Puzzle::get(uint32_t c, uint32_t r) const {
+    assert(c < PUZZLE_WIDTH && r < PUZZLE_HEIGHT);
+    // post: return value is cell at (c,r).
+
     return m_cells[c + r * PUZZLE_WIDTH];
 }
 
 bool Puzzle::completed() const {
+    assert(true);
+    // post: return value is true iff the puzzle is completed (the sun can set).
+
     for (auto tile : SOLUTION_TILES) {
         if (m_cells[tile] != Cell::red) return false;
     }
@@ -204,6 +256,9 @@ bool Puzzle::completed() const {
 }
 
 void Puzzle::move(Move move) {
+    assert(can_move(move.piece, move.dir));
+    // post: piece at move.piece moved in direction move.dir.
+
     Pos old_pos = move.piece;
     Pos new_pos = pos_move(move.piece, move.dir);
     Cell type = m_cells[old_pos.c + old_pos.r * PUZZLE_WIDTH];
@@ -251,6 +306,9 @@ void Puzzle::move(Move move) {
 }
 
 vector<Move> Puzzle::get_moves() const {
+    assert(true);
+    // post: return value is the set of all possible valid moves.
+
     vector<Move> moves;
 
     for (auto piece : get_pieces()) {
@@ -263,6 +321,9 @@ vector<Move> Puzzle::get_moves() const {
 }
 
 vector<Pos> Puzzle::get_pieces() const {
+    assert(true);
+    // post: return value is the set of all the top left cells of each piece.
+
     vector<Pos> pieces;
     bool taken[PUZZLE_WIDTH][PUZZLE_HEIGHT] = {};
 
@@ -299,12 +360,18 @@ vector<Pos> Puzzle::get_pieces() const {
 }
 
 bool Puzzle::can_move(Pos piece, Direction dir) const {
+    assert(true);
+    // post: return value is true iff the piece at 'piece' can move in direction dir.
+
     if (!pos_can_move(piece, dir, PUZZLE_WIDTH, PUZZLE_HEIGHT)) return false;
 
     Cell type = m_cells[piece.c + piece.r * PUZZLE_WIDTH];
-    Pos new_pos = pos_move(piece, dir);
+
+    assert(type != Cell::empty);
+
     int width = (type == Cell::red || type == Cell::green) ? 2 : 1;
     int height = (type == Cell::red || type == Cell::black) ? 2 : 1;
+    Pos new_pos = pos_move(piece, dir);
 
     if (new_pos.c + width > PUZZLE_WIDTH) return false;
     if (new_pos.r + height > PUZZLE_HEIGHT) return false;
@@ -336,12 +403,18 @@ bool Puzzle::can_move(Pos piece, Direction dir) const {
 }
 
 uint64_t Puzzle::hashcode() const {
+    assert(true);
+    // post: return value is the hash code of the current puzzle state.
+
+    // Each cell has 3 bits of information, and since the board has 20 cells, that is 60 bits of information. As this
+    // just fits into a 64 bit int, it can be used as a perfect hash function for very fast lookups/compares.
+
     if (m_hash_valid) return m_hashcode;
 
     uint64_t hashcode = 0;
 
     for (const auto& cell : m_cells) {
-        hashcode |= static_cast<uint8_t>(cell);
+        hashcode |= static_cast<uint64_t>(cell);
         hashcode <<= 3;
     }
 
@@ -355,25 +428,30 @@ uint64_t Puzzle::hashcode() const {
 
 // region Breadth-first search
 
-bool puzzle_present(const vector<Candidate>& c, map<uint64_t, vector<Puzzle>>& cm, const Puzzle& puzzle) {
-    auto entry = cm.find(puzzle.hashcode());
+bool puzzle_present(const vector<Candidate>& c, const CandidateChecker& cm, const Puzzle& puzzle) {
+    assert(true);
+    // post: return value is true iff puzzle is in c.
 
-    if (entry == cm.end()) return false;
-
-    return any_of(entry->second.cbegin(), entry->second.cend(), [&puzzle](const Puzzle& p) { return p == puzzle; });
+    return cm.find(puzzle) != cm.cend();
 }
 
-void try_bfs(vector<Candidate>& c, map<uint64_t, vector<Puzzle>>& cm, int i, Move move) {
+void try_bfs(vector<Candidate>& c, CandidateChecker & cm, int i, Move move) {
+    assert(i >= 0 && i < c.size());
+    // post: move dir performed on puzzle at index i in c. Result is added to c iff it doesn't already contain it.
+
     Puzzle puzzle = c[i].puzzle;
     puzzle.move(move);
 
     if (!puzzle_present(c, cm, puzzle)) {
-        cm[puzzle.hashcode()].push_back(puzzle);
+        cm.insert(puzzle);
         c.push_back({ puzzle, i });
     }
 }
 
 vector<Puzzle>& build_path(const vector<Candidate>& c, int i, vector<Puzzle>& path) {
+    assert(true);
+    // post: path contains the solution path from element c[i], if it exists.
+
     if (i >= 0) {
         build_path(c, c[i].parent, path);
         path.push_back(c[i].puzzle);
@@ -383,10 +461,13 @@ vector<Puzzle>& build_path(const vector<Candidate>& c, int i, vector<Puzzle>& pa
 }
 
 Solution solve_bfs(Puzzle start) {
+    assert(true);
+    // post: return value contains the result of trying to solve start using bfs.
+
     int i = 0;
     vector<Puzzle> path;
     vector<Candidate> c = { { start, -1 } };
-    map<uint64_t, vector<Puzzle>> cm;
+    CandidateChecker cm;
 
     for (; i < c.size() && !c[i].puzzle.completed(); ++i) {
         Puzzle puzzle = c[i].puzzle;
@@ -401,45 +482,31 @@ Solution solve_bfs(Puzzle start) {
 
 // endregion
 
-vector<Puzzle> load_puzzles(size_t count) {
-    vector<Puzzle> puzzles;
-
-    for (size_t i = 0; i < count; ++i) {
-        stringstream name;
-        Puzzle puzzle;
-
-        name << "../challenge" << i << ".txt";
-
-        ifstream is{ name.str() };
-
-        if (!is) {
-            cerr << "Failed to open challenge " << i << endl;
-
-            exit(EXIT_FAILURE);
-        }
-
-        is >> puzzle;
-        puzzles.push_back(puzzle);
-    }
-
-    return puzzles;
-}
-
 int main() {
-    cout << "Loading challenges..." << endl;
+    stringstream ss{"brrb\nbrrb\n.gg.\nbyyb\nbyyb"};
+    Puzzle puzzle;
+    ss >> puzzle;
 
-    auto puzzles = load_puzzles(1);
+    auto now = chrono::high_resolution_clock::now();
 
-    auto res = solve_bfs(puzzles[0]);
+    auto res = solve_bfs(puzzle);
 
+    auto end = chrono::high_resolution_clock::now();
+    auto dif = end - now;
+    auto dif_ms = chrono::duration_cast<chrono::milliseconds>(dif);
+
+    cout << "Completed in " << dif_ms.count() << " ms" << endl;
+
+#ifndef PROFILE_ONLY
     cout << "Found solution: " << (res.solved ? "Yes" : "No") << endl;
     if (res.solved) {
-        cout << "Steps: " << res.path.size() << endl;
+        cout << "Steps: " << res.path.size() - 1 << endl;
         cout << "\nSolution" << endl;
         cout << res.puzzle << endl;
         cout << "Path" << endl;
         cout << res;
     }
+#endif
 
     return EXIT_SUCCESS;
 }
